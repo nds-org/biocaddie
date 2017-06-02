@@ -1,0 +1,243 @@
+package edu.gslis.qpp.predictors;
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+
+import edu.gslis.docscoring.QueryDocScorer;
+import edu.gslis.docscoring.Scorer;
+import edu.gslis.docscoring.ScorerDirichletKL;
+import edu.gslis.docscoring.support.CollectionStats;
+import edu.gslis.docscoring.support.IndexBackedCollectionStats;
+import edu.gslis.eval.Qrels;
+import edu.gslis.filtering.session.FilterSession;
+import edu.gslis.indexes.IndexWrapper;
+import edu.gslis.indexes.IndexWrapperIndriImpl;
+import edu.gslis.queries.GQueries;
+import edu.gslis.queries.GQueriesJsonImpl;
+import edu.gslis.queries.GQuery;
+import edu.gslis.searchhits.SearchHit;
+import edu.gslis.searchhits.SearchHits;
+import edu.gslis.textrepresentation.FeatureVector;
+import edu.gslis.utils.Stopper;
+
+/**
+ * Basically a port of the Lemur QueryClarity implementation
+ * to our framework.
+ */
+public class QueryClarity  {
+
+    IndexWrapper index = null;
+    Stopper stopper = null;
+    
+
+    public QueryClarity(IndexWrapper index, Stopper stopper) {
+        this.index = index;
+        this.stopper = stopper;
+    }
+    
+    
+    /**
+     * Calculate clarity based on a retrieval for the query. This method runs the query first.
+     * @param query        Query
+     * @param scorer       Scorer
+     * @param fbDocCount   Number of feedback documents
+     * @param fbTermCount  Number of feedback terms
+     * @return
+     */
+    public double clarity(GQuery query, Scorer scorer, int fbDocCount, int numFbTerms)
+    {
+        SearchHits hits = index.runQuery(query, (int)index.docCount());
+        return clarity(query, hits, scorer, fbDocCount, numFbTerms);
+    }
+    
+    
+    /**
+     * Calculate clarity based on a retrieval for the query. This method requires a set of initial results.
+     * @param query        Query
+     * @param hits         Set of relevant results
+     * @param scorer       Scorer
+     * @param fbDocCount   Number of feedback documents
+     * @param fbTermCount  Number of feedback terms
+     * @return
+     */
+    public double clarity(GQuery query, SearchHits hits, Scorer scorer, int fbDocCount, int numFbTerms)
+    {
+    	SearchHits scoredHits = new SearchHits();
+    	Iterator<SearchHit> it = hits.iterator();
+        while (it.hasNext()) {
+            SearchHit hit = it.next();
+            double score = scorer.score(hit);
+            hit.setScore(score);
+            scoredHits.add(hit);
+        }
+        
+        scoredHits.rank();     
+        scoredHits.logToPosterior();
+        if (scoredHits.size() > fbDocCount)
+            scoredHits.crop(fbDocCount);
+        
+        return clarity(query, scoredHits, numFbTerms);   
+    }
+
+    
+    /**
+     * Calculate query clarity given a set of relevant documents
+     * @param query         Query
+     * @param hits          Set of relevant results
+     * @param numFbTerms    Number of feedback terms to include
+     * @return
+     */
+    private double clarity(GQuery query, SearchHits hits, int numFbTerms) 
+    {
+        double clarity = 0;
+
+        // Total number of terms in vocabulary
+        double numTerms = index.termCount();
+        
+        
+        // Update the query model using feedback documents
+        FeatureVector newfv = computeRM1(query.getFeatureVector(), hits, numFbTerms);
+        
+        Iterator<String> it = newfv.iterator();
+        double total = 0.0;
+        double logpr = 0.0;
+        while (it.hasNext()) {
+            String term = it.next();
+            double pwq = newfv.getFeatureWeight(term);
+            double pwc = index.termFreq(term)/numTerms;
+            logpr += pwq*Math.log(pwq/pwc);
+            total += pwq;
+        }
+        clarity = (logpr/total)/Math.log(2.0);
+        return clarity;
+    }
+    
+    /**
+     * Calculate clarity given only QRels.  Scores each Qrel.
+     * @param query         Query
+     * @param qrels         Set of Qrels
+     * @param scorer        Scorer
+     * @param numFbTerms    Number of feedback terms.
+     * @return
+     */
+    public double clarity(GQuery query, Qrels qrels, Scorer scorer, int numFbTerms) {
+        SearchHits hits = new SearchHits();
+        // Go get scores for each Qrel
+        Set<String> docnos = qrels.getRelDocs(query.getTitle());
+        for (String docno: docnos) {
+            SearchHit hit = index.getSearchHit(docno, stopper);
+            double score = scorer.score(hit);
+            hit.setScore(score);
+            hits.add(hit);
+        }
+        hits.rank();
+        return clarity(query, hits, numFbTerms);
+    }
+    
+
+    /**
+     * Compute the feedback query model using RM1
+     * @param qfv          Query feature vector
+     * @param hits         Set of relevant documents
+     * @param numFbTerms   Number of feedback terms (-1 for no limit)
+     * @return
+     */
+    protected FeatureVector computeRM1(FeatureVector qfv, SearchHits hits, int numFbTerms) 
+    {
+        //double expWeight = 1;
+        FeatureVector newfv = new FeatureVector(stopper);
+        
+        Map<String, Double> unigramModel = new HashMap<String, Double>();
+
+        Iterator<SearchHit> it = hits.iterator();
+        while(it.hasNext()) {
+            SearchHit hit = it.next();            
+            double weight = hit.getScore();
+
+            
+            FeatureVector docVector = index.getDocVector(hit.getDocID(), stopper);
+            Iterator<String> dvIt = docVector.iterator();
+            // For each term, weight the p(w|D) by the exponentiated score
+            while (dvIt.hasNext()) {
+                String term = dvIt.next();
+                double pwd = weight*(docVector.getFeatureWeight(term)/docVector.getLength());
+                incrementDouble(unigramModel, term, pwd);
+            }
+        }
+        
+        // Set up a map ordered by values descending
+        Ordering<String> order = Ordering.natural().onResultOf(Functions.
+                forMap(unigramModel)).compound(Ordering.natural()).reverse();
+        ImmutableSortedMap<String, Double> map = ImmutableSortedMap.copyOf(unigramModel, order);
+
+        double sum = 0;
+        for (String term: map.keySet())
+            sum += map.get(term);            
+        
+        for (String term: map.keySet())
+        {     
+        	// Ad-hoc grooming
+            //if((term.matches(".*[0-9].*") || term.length()<3))
+            //    continue;
+
+             double weight = map.get(term)/sum; 
+            //double weight = expWeight*map.get(term)/sum +  
+            //        (1-expWeight)*index.termFreq(term)/index.termCount();
+            newfv.addTerm(term, weight);
+        }
+        
+        newfv.clip(numFbTerms);
+        
+        // The updated query model
+        System.err.println("New model2:");
+        System.err.println(newfv.toString());
+       return newfv;
+    }
+    
+    /**
+     * Increment a double value in a map
+     * @param map
+     * @param key
+     * @param newval
+     */
+    protected void incrementDouble(Map<String, Double> map, String key, double newval) {
+        if (map.containsKey(key)) {
+            double prev = map.get(key);
+            map.put(key, prev + newval);
+        } else {
+            map.put(key, newval);
+        }
+    }
+    
+    public static void main(String[] args) {
+        GQueries        queries    = new GQueriesJsonImpl();
+        queries.setMetadataField(FilterSession.NAME_OF_EMIT_STATUS_FIELD);
+        queries.setMetadataField(FilterSession.NAME_OF_CONSTRAINT_FIELD);
+        queries.read("/Users/cwillis/dev/uiucGSLIS/filtering/topics/topics.351-400.json");
+        
+        IndexWrapper index = new IndexWrapperIndriImpl("/Users/cwillis/dev/uiucGSLIS/indexes/FT.test");
+        Stopper stopper = null;
+        
+        CollectionStats corpusStats = new IndexBackedCollectionStats();
+        corpusStats.setStatSource("/Users/cwillis/dev/uiucGSLIS/indexes/FT.test");
+        
+        QueryDocScorer scorer = new ScorerDirichletKL();
+        scorer.setCollectionStats(corpusStats);
+        scorer.setParameter("mu", 1000);
+        scorer.setParameter("type", 1); 
+        scorer.init();
+        
+        QueryClarity qc = new QueryClarity(index, stopper);
+        Iterator<GQuery> queryIterator = queries.iterator();
+        while(queryIterator.hasNext()) {
+            GQuery query = queryIterator.next();
+            scorer.setQuery(query);
+            double clarity = qc.clarity(query, scorer, 20, 100);
+            System.out.println(query.getTitle() + "," + clarity);
+        }
+        
+    }
+    
+}
