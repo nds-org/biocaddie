@@ -34,15 +34,10 @@ public class PostRetrievalPredictorSuite extends PredictorSuite {
 		return values;
 	
 	}
-
-	// Not yet implemented:
-	//  Absolute divergence: KL-divergence of query model and feedback documents (QFBDiv_A) (Lv and Zhai)
-	//  Clarity
 	
 	/**
 	 * Absolute divergence: KL-divergence of query model and feedback documents (QFBDiv_A) (Lv and Zhai)
 	 */
-
 	public double divergence(SearchHits hits, int k, int numFbTerms) {
 		double qfbdiv_a = 0;
 		

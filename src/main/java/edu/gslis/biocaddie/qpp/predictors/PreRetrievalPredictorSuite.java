@@ -56,6 +56,8 @@ public class PreRetrievalPredictorSuite extends PredictorSuite {
             scqstat.addValue(scq);
         }
                         
+        values.put("queryLen", qv.getLength());
+        
         values.put("varIDF", idfstat.getVariance());
         values.put("avgIDF", idfstat.getMean());
         values.put("minIDF", idfstat.getMin());

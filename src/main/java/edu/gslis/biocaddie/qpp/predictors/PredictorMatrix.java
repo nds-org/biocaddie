@@ -6,15 +6,16 @@ import java.util.TreeMap;
 import org.apache.commons.lang.ArrayUtils;
 import org.rosuda.REngine.Rserve.RConnection;
 
-import com.google.common.base.Strings;
-import com.uwyn.jhighlight.tools.StringUtils;
 
+/** 
+ * Simple class to store predictor headers separate from the query/predictor rows.
+ */
 public class PredictorMatrix {
 
 	String[] headers = new String[0];
 	Map<String, Double[]> predictors = new TreeMap<String, Double[]>();
 	
-	Map<String, Double> paramMap = new TreeMap<String, Double>();
+	Map<String, Double> response = new TreeMap<String, Double>();
 	
 	RConnection c = null;
 
@@ -35,33 +36,35 @@ public class PredictorMatrix {
 	}
 	
 	
-	public void setParameterValues(Map<String, Double> paramMap) {
-		this.paramMap = paramMap;
+	public void setResponse(Map<String, Double> response) {
+		this.response = response;
 	}
+
+	public Map<String, Double> getResponse() {
+		return response;
+	}
+	
+	/*
 	
 	public void prepare() {
 		try
 		{
-				c = new RConnection();
-				c.voidEval("library(glmnet)");
-				c.assign("headers", headers);			
-				c.assign("queries", paramMap.keySet().toArray(new String[0]));
-				
-				// y = target parameter
-				c.assign("y", ArrayUtils.toPrimitive(paramMap.values().toArray(new Double[0])));
-				
-				// x = predictors
-				c.voidEval("x <- data.frame()");	
-				for (String key: predictors.keySet()) {				
-					double[] d = ArrayUtils.toPrimitive(predictors.get(key));
-					c.assign("tmp", d);
-					c.eval("x <- rbind(x,tmp)");
-				}
-				//c.voidEval("print(dim(x))");
-				//c.voidEval("print(dim(headers[-1]))");
-				//c.voidEval("print(class(x))");
-				//c.voidEval("print(class(y))");
-				c.voidEval("colnames(x) <- as.list(headers[-1])");
+			c = new RConnection();
+			c.voidEval("library(glmnet)");
+			c.assign("headers", headers);			
+			c.assign("queries", response.keySet().toArray(new String[0]));
+			
+			// y = target parameter
+			c.assign("y", ArrayUtils.toPrimitive(response.values().toArray(new Double[0])));
+			
+			// x = predictors
+			c.voidEval("x <- data.frame()");	
+			for (String key: predictors.keySet()) {				
+				double[] d = ArrayUtils.toPrimitive(predictors.get(key));
+				c.assign("tmp", d);
+				c.eval("x <- rbind(x,tmp)");
+			}
+			c.voidEval("colnames(x) <- as.list(headers[-1])");
 		} catch (Exception e) {
 			e.printStackTrace();
 		}		
@@ -69,20 +72,23 @@ public class PredictorMatrix {
 	public void close() {
 		c.close();
 	}
-	public double predict(String query, boolean verbose) {
-		// Build the penalized regression model using qpp[-query]
-		// Predict parameter 
-		
+	
+	public double predict(String query, boolean verbose) 
+	{
 		double predicted = 0;
 
-		try {
+		try 
+		{
+			// Get the index of the specified query
 			c.voidEval("q <- which(queries == \"" + query + "\")");
-			//c.voidEval("print(q)");
-			//c.voidEval("print(dim(x))");
-			//c.voidEval("print(length(y))");
-			c.voidEval("cv.lasso <- cv.glmnet(as.matrix(x[-q,]), y[-q], alpha=1)");		
+			
+			// k-fold cross validation. alpha=1 lasso; alph=0 ridge
+			c.voidEval("cv.lasso <- cv.glmnet(as.matrix(x[-q,]), y[-q], alpha=1)");	
+			
+			// Predict the held-out value
 			c.voidEval("pred <- predict(cv.lasso, as.matrix(x[q,]))");
-			//c.voidEval("print(pred)");
+			
+			// Get the coefficients
 			c.voidEval("coef <- coef(cv.lasso)");
 			String[] names = c.eval("row.names(coef)").asStrings();
 			double[] coef = c.eval("as.matrix(coef)").asDoubles();
@@ -93,6 +99,7 @@ public class PredictorMatrix {
 			}
 			predicted = c.eval("pred").asDouble();
 			System.out.println(query + "(" + predicted + "): " + model);
+			
 			if (predicted > 1) 
 				predicted = 1;
 			else if (predicted < 0) 
@@ -105,5 +112,6 @@ public class PredictorMatrix {
 		}
 		return predicted;
 	}
+	*/
 
 }

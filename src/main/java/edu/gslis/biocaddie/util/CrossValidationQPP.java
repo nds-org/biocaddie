@@ -16,12 +16,14 @@ import org.apache.commons.cli.GnuParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.apache.commons.math3.stat.inference.TTest;
 
+import edu.gslis.biocaddie.qpp.predictors.Prediction;
 import edu.gslis.biocaddie.qpp.predictors.PredictorMatrix;
 
 /** 
  * Leave-one-out cross validation with query performance predictor support.
- * 
  */
 public class CrossValidationQPP 
 {	
@@ -43,6 +45,8 @@ public class CrossValidationQPP
         String predictionParam = cl.getOptionValue("param");
         boolean verbose = cl.hasOption("verbose");
         
+        double alpha = Double.parseDouble(cl.getOptionValue("alpha"));
+        
         // Per-query cross-validated output
         FileWriter output  = new FileWriter(outputPath);
         
@@ -57,46 +61,34 @@ public class CrossValidationQPP
         // Read the predictors 
         PredictorMatrix predictors = readPredictors(predictorsPath);        
         
-               
-        // Get the 
+
+        // Map of LOOCV parameters without QPP
         Map<String, String> cvNoQppMap = new TreeMap<String, String>();
         
+        // Map of topics max swept predicted param
         Map<String, String> topicMaxParamMap = new TreeMap<String, String>();
         Map<String, Double> topicParamMap = new TreeMap<String, Double>();
         for (String topic: topics) {
         	 String maxParam = getMaxParam(topic, trecEval, verbose);
         	 cvNoQppMap.put(topic, maxParam);
         	 
+        	 // Hold the LOOCV params and sweep the predicted lambda.
         	 Map<String, Double> paramMap = getParamMap(maxParam);
-         	 //mu=1000:fbTerms=10:fbDocs=50:fbOrigWeight=0.2.out
         	 double tmpMax = 0;
         	 String tmpParams = "";
         	 double maxLambda = 0;
         	 for (double lambda=0.0; lambda < 1.0; lambda +=0.1) {
 
-        		 /*
-        		 String params = "";
-        		 int i=0;
-        		 for (String key: paramMap.keySet()) {
-        			 if (i > 0)
-        				 params+= ",";
-        			 if (key.equals(predictionParam))
-        				 params += String.format("%s:%.1f", key, lambda);
-        			 else 
-        				 params += String.format("%s:%.1f", key, paramMap.get(key));
-        			 i++;
-        		 }
-        		 */
+        		 if (lambda == 0.2)
+        			 continue;
+        		 
         		 String params = getParamKey(paramMap, predictionParam, lambda);
-        		 //String params = String.format("mu=%d:fbTerms=%d:fbDocs=%d:fbOrigWeight=%.1f.eval",
-        		//		 paramMap.get("mu").intValue(), paramMap.get("fbTerms").intValue(), paramMap.get("fbDocs").intValue(), lambda);
         		 if (trecEval.get(params) != null) {
         			 if (trecEval.get(params).get(topic) == null)
         				 System.err.println("No topic " + topic + " for " + params);
         			 else {
 	        			 double tmp = trecEval.get(params).get(topic);
 		        		 if (tmp > tmpMax) {
-		            		 //System.out.println(params);
 		        			 tmpParams = params;
 		        			 tmpMax = tmp;
 		        			 maxLambda = lambda;
@@ -108,52 +100,69 @@ public class CrossValidationQPP
         	 topicMaxParamMap.put(topic, tmpParams);  
         	 topicParamMap.put(topic, maxLambda);
         }
-        
-        
-        /*
-        Map<String, Double> topicMetricMap = new TreeMap<String, Double>();
-        Map<String, Double> topicParamMap = new TreeMap<String, Double>();
-		for (String paramSet: trecEval.keySet()) {
-			
-			Map<String, Double> paramMap = getParamMap(paramSet);
-			
-			Map<String, Double> topicMap = trecEval.get(paramSet);
-			for (String topic: topicMap.keySet()) {
-				double metricValue = topicMap.get(topic);
-				double paramValue = paramMap.get(predictionParam);
-				if (topicMetricMap.containsKey(topic)) {
-					if (metricValue > topicMetricMap.get(topic)) {
-						topicMetricMap.put(topic, metricValue);
-						topicParamMap.put(topic, paramValue);
-					}
-				} else {
-					topicMetricMap.put(topic, metricValue);
-					topicParamMap.put(topic, paramValue);
-				}
-			}
-		}
-		*/
+                
+        System.out.println("Topic\tResponse");
+        for (String topic: topicParamMap.keySet()) {
+        	double lambda = topicParamMap.get(topic);
+        	System.out.println(String.format("%s\t%.2f", topic, lambda));
+        }
 
+        System.out.println("");
 		// Train the model and predict lambda		
-		predictors.setParameterValues(topicParamMap);
-		predictors.prepare();
+		predictors.setResponse(topicParamMap);
+		
+		
+		Prediction prediction = new Prediction(predictors);
+		prediction.init();
+		
+		if (verbose) {
+			String hdr = "";;
+			for (String field :predictors.getHeaders())
+				hdr += field + "\t";
+			System.out.println(hdr);
+			for (String key: predictors.getPredictors().keySet()) {
+				Double[] values = predictors.getPredictors().get(key);
+				String row = key;
+				for (double d: values) {
+					row += "\t" + String.format("%.2f", d);
+					
+				}
+				System.out.println(row);
+			}
+
+		}
+		
 		Map<String, Double> topicPredictedMap = new TreeMap<String, Double>();
+		DescriptiveStatistics statsNoQpp = new DescriptiveStatistics();
+		DescriptiveStatistics statsQpp = new DescriptiveStatistics();
+		
+		
+		System.out.println("Topic\tMetric\tMetric\tParam\tParam");
 		for (String topic: topicParamMap.keySet()) {
-			double predicted = predictors.predict(topic, false);
+			if (topic.startsWith("E"))
+				continue;
+			double predicted = prediction.predict(topic, alpha, verbose);
 			topicPredictedMap.put(topic, predicted);
 			
 			String maxParam = cvNoQppMap.get(topic);
-       	 	double noQpp = trecEval.get(maxParam).get(topic);
-       	 	
+			
+       	 	double noQpp = trecEval.get(maxParam).get(topic);       	 	
        	 	Map<String, Double> paramMap = getParamMap(maxParam);
        	 	String paramKey = getParamKey(paramMap, predictionParam, predicted);
-			//String params = String.format("mu=%d:fbTerms=%d:fbDocs=%d:fbOrigWeight=%.1f.eval",
-			//	 paramMap.get("mu").intValue(), paramMap.get("fbTerms").intValue(), paramMap.get("fbDocs").intValue(), predicted);
-			double withQpp = trecEval.get(paramKey).get(topic);
-			System.out.println(topic + "\t" + noQpp + "\t" + withQpp);
+       	 	if (trecEval.get(paramKey) != null) {
+				double withQpp = trecEval.get(paramKey).get(topic);
+				System.out.println(topic + "\t" + noQpp + "\t" + withQpp + "\t" + paramMap.get(predictionParam) + "\t" + String.format("%.2f", predicted));
+				statsNoQpp.addValue(noQpp);
+				statsQpp.addValue(withQpp);
+       	 	}	
 		}
-		predictors.close();
+		
+		System.out.println(String.format("mean\t%.4f\t%.4f", statsNoQpp.getMean(), statsQpp.getMean()));
+		TTest ttest = new TTest();
+		double pvalue = ttest.pairedTTest(statsNoQpp.getValues(), statsQpp.getValues());
+		System.out.println("pvalue=" + pvalue);
 
+		prediction.close();
 		output.close();
 
     }
@@ -228,12 +237,12 @@ public class CrossValidationQPP
 				max = score;
 				maxParam = paramSet;					
 			}
-			if (verbose)
-				System.err.println(heldOut + ", " + paramSet + ", "  + score);
+			//if (verbose)
+				//System.err.println(heldOut + ", " + paramSet + ", "  + score);
 		}
 
-		if (verbose)
-			System.err.println(heldOut + ", " + maxParam + ", "  + max + ",max");
+		//if (verbose)
+			//System.err.println(heldOut + ", " + maxParam + ", "  + max + ",max");
 		
 		return maxParam;
     }
@@ -331,6 +340,7 @@ public class CrossValidationQPP
         options.addOption("param", true, "QPP target parameter");
         options.addOption("output", true, "Output path");
         options.addOption("verbose", false, "Verbose output");
+        options.addOption("alpha", true, "GLMNet alpha");
         return options;
     }
       
