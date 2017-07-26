@@ -1,0 +1,15 @@
+FROM redis
+
+RUN apt-get -qq update && \
+    apt-get -qq install --no-install-recommends \
+      vim && \
+    apt-get -qq autoremove && \
+    apt-get -qq autoclean && \
+    apt-get -qq clean all && \
+    rm -rf /var/cache/apk/*
+
+ADD https://storage.googleapis.com/kubernetes-release/release/v1.5.2/bin/linux/amd64/kubectl /usr/local/bin/kubectl
+RUN chmod +x /usr/local/bin/kubectl
+
+WORKDIR /root/biocaddie
+COPY . /root/biocaddie

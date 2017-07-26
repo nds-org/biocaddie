@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: indri
+spec:
+  replicas: 1
+  selector:
+    component: indri
+  template:
+    metadata:
+      labels:
+        component: indri
+    spec:
+      containers:
+      - name: indri
+        image: ndslabs/indri
+        stdin: true
+        tty: true
+        workingDir: /root/biocaddie
+        volumeMounts:
+        - mountPath: /root/biocaddie/
+          name: src
+        - mountPath: /data
+          name: data
+      volumes:
+      - name: src
+        hostPath:
+          path: /var/glfs/global/biocaddie/
+      - name: data
+        hostPath:
+          path: /var/glfs/global/data/

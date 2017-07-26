@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ name }}
+spec:
+  parallelism: 2
+  template:
+    metadata:
+      name: {{ name }}
+    spec:
+      containers:
+      - name: redis-worker
+        image: ndslabs/redis-worker
+        imagePullPolicy: Always
+        env:
+        - name: REDIS_SERVICE_QUEUE
+          value: "{{ name }}"
+        volumeMounts:
+        - mountPath: /queries
+          name: queries
+        - mountPath: /output
+          name: output
+        - mountPath: /data
+          name: input
+      volumes:
+      - name: queries
+        hostPath:
+          path: /var/glfs/global/biocaddie/queries
+      - name: output
+        hostPath:
+          path: /var/glfs/global/biocaddie/output
+      - name: input
+        hostPath:
+          path: /var/glfs/global/data
+      restartPolicy: Never

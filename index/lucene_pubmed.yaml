@@ -1,0 +1,19 @@
+indexPath: /data/pubmed/lucene/pubmed_all
+corpus:
+   path: /data/pubmed/trecText2
+   type: trectext
+fields:
+   - name: docno
+     source: element
+     element: DOCNO
+     indexed: true
+     stored: true
+     storedTermVectors: false
+     type: string
+   - name: text
+     source: text
+     element: TEXT
+     indexed: true
+     stored: true
+     storedTermVectors: true
+     type: text

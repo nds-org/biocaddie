@@ -277,3 +277,15 @@ You can also run the ``fd`` variants of these two scripts.
 For more information, see:
 Metzler, D. and Croft, W.B., [A Markov Random Field Model for Term Dependencies](http://dl.acm.org/citation.cfm?id=1076115), ACM SIGIR 2005.
 
+
+## Using Lucene
+
+Building the Lucene index:
+```bash
+scripts/run.sh edu.gslis.lucene.main.LuceneBuildIndex index/lucene_biocaddie.yaml
+```
+
+Running the QL baselines:
+```bash
+lucene/<model>.sh <topics> <collection> | parallel --eta bash -c "{}"
+```

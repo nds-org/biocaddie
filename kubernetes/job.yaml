@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ name }}
+spec:
+  template:
+    metadata:
+      name: {{ name }}
+    spec:
+      containers:
+      - name: indri
+        image: ndslabs/indri
+        imagePullPolicy: IfNotPresent
+        command: [ "bash" ]
+        args: [ "-c", "IndriRunQuery -index=$INDEX_PATH -trecFormat=$TREC_FORMAT $INDRI_ARGS $QUERIES_FILE $STOPLIST > $OUTPUT_FILE" ]
+        env:
+        - name: INDEX_PATH
+          value: "{{ index }}"
+        - name: OUTPUT_FILE
+          value: "{{ output }}"
+        - name: QUERIES_FILE
+          value: "{{ queries }}"
+        - name: STOPLIST
+          value: "{{ stoplist }}"
+        - name: TREC_FORMAT
+          value: "true" 
+        - name: INDRI_ARGS
+          value: "{{ args }}"
+        volumeMounts:
+        - mountPath: /root/biocaddie
+          name: output
+        - mountPath: /data
+          name: input
+      volumes:
+      - name: output
+        hostPath:
+          path: /home/ubuntu/biocaddie
+      - name: input
+        hostPath:
+          path: /data
+      restartPolicy: Never

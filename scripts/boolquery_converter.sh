@@ -14,7 +14,7 @@ do
 	    do
 		for j in `seq $((i+1)) $((${#text_arr[@]}-1))`
 		do
-		     echo -e "\t\t#band(${text_arr[$i]} ${text_arr[$j]})" >> ~/biocaddie/queries/boolqueries.combined.short
+		     echo -e "\t\t#band( ${text_arr[$i]} ${text_arr[$j]} )" >> ~/biocaddie/queries/boolqueries.combined.short
 		done
 	    done
  	    echo -e "\t)\n\t</text>" >> ~/biocaddie/queries/boolqueries.combined.short

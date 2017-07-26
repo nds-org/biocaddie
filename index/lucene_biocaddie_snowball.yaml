@@ -1,0 +1,27 @@
+indexPath: /data/biocaddie/lucene/biocaddie_all.snowball
+analyzer: edu.gslis.lucene.indexer.SnowballAnalyzer
+corpus:
+   path: /data/biocaddie/data/update_json_folder
+   type: json
+fields:
+   - name: docno
+     source: element
+     element: DOCNO
+     indexed: true
+     stored: true
+     storedTermVectors: false
+     type: string
+   - name: text
+     source: text
+     element: TEXT
+     indexed: true
+     stored: true
+     storedTermVectors: true
+     type: text
+   - name: repository
+     source: element
+     element: REPOSITORY
+     indexed: true
+     stored: true
+     storedTermVectors: true
+     type: text

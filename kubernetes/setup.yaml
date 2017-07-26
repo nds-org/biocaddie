@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: biocaddie-setup
+spec:
+  parallelism: 1
+  template:
+    metadata:
+      name: biocaddie-detup
+    spec:
+      containers:
+      - name: indri
+        image: ndslabs/indri
+        imagePullPolicy: Always
+        stdin: true
+        workingDir: /root/biocaddie
+        command: [ "/bin/sh", "-c" ]
+        args: [ "git init . && (git remote add origin https://github.com/bodom0015/biocaddie || git remote set-url origin https://github.com/bodom0015/biocaddie) && git pull origin NDS-262 && mvn install && ./kubernetes/reindex.sh" ]
+        volumeMounts:
+        - mountPath: /root/biocaddie
+          name: src
+        - mountPath: /data
+          name: input
+      volumes:
+      - name: src
+        hostPath:
+          path: /var/glfs/global/biocaddie
+      - name: input
+        hostPath:
+          path: /var/glfs/global/data
+      restartPolicy: Never

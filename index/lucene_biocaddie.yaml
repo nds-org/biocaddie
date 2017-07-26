@@ -17,20 +17,6 @@ fields:
      stored: true
      storedTermVectors: true
      type: text
-#   - name: title
-#     source: element
-#     element: TITLE
-#     indexed: true
-#     stored: true
-#     storedTermVectors: true
-#     type: text
-#   - name: metadata
-#     source: element
-#     element: METADATA
-#     indexed: true
-#     stored: true
-#     storedTermVectors: true
-#     type: text
    - name: repository
      source: element
      element: REPOSITORY
