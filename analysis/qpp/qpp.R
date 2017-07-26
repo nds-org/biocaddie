@@ -5,22 +5,27 @@ library(MASS)
 
 args = commandArgs(trailingOnly=TRUE)
 
-metric <- "ndcg"
 
 topics <- args[1]
 col <- args[2]
 model <- args[3]
 param <- args[4]
+#metric <- "ndcg_cut_20"
+metric <- args[5]
 
 #rm3.combined.short.map.out
 
+cat(paste(topics, col, model, param, metric))
 loocv <- read.table(paste("../../loocv/", model, ".", col, ".", topics, ".",  metric, ".out", sep=""), header=F)
 colnames(loocv) <- c("query", "params", "ndcg.model")
 
 # Read file containing NDCG for each level of alpha
 paramvals <- read.csv(paste("../characterize/",  model, ".", param, ".", metric, ".out", sep=""), header=F)
 colnames(paramvals) <- c("param", "query", "ndcg")
-paramvals <- paramvals %>% group_by(query) %>% top_n(1, ndcg)
+#paramvals <- paramvals %>% group_by(query) %>% top_n(1, ndcg)
+paramvals <- paramvals %>% group_by(query) %>% filter(ndcg == max(ndcg)) %>%  filter(1:n() == 1)
+
+print(paramvals)
 
 # Read qpp
 qpp <- read.csv("../../qpp/predictors.csv", header=T)
@@ -44,9 +49,9 @@ reg_analysis <- function(formula) {
     cat (sprintf("Regression analysis of %s\n", formula))
     mod <- lm(as.formula(formula), qpp)
     sum <-summary(mod)
-    bc <- boxcox(as.formula(formula), data=qpp,  plotit=F)
+#    bc <- boxcox(as.formula(formula), data=qpp,  plotit=F)
 #    cat(sprintf("Coefficients:  %0.4f %0.4f p=%0.4f, R^2=%0.4f \n", lm$coefficients[1,1], lm$coefficients[2,1], lm$coefficients[2,4], lm$adj.r.squared))
-    cat(sprintf("\tBoxcox: %0.2f\n", bc$x[which(bc$y == max(bc$y))]))
+#    cat(sprintf("\tBoxcox: %0.2f\n", bc$x[which(bc$y == max(bc$y))]))
 
     len <- length(residuals(mod))
     var <- summary(lm(abs(residuals(mod)) ~ fitted(mod)))
