@@ -135,10 +135,10 @@ public class CrossValidation
 				
 				if (verbose)
 					System.err.println(heldOut + ", " + maxParam + ", "  + value + ",final");
+				
 				output.write(heldOut + "\t" + maxParam + "\t" + value + "\n");
 				testMap.put(heldOut, value);			
 			} else {
-				// This can happen if RM contains terms outside of collection time range
 				System.err.println("Warning: no value for " + heldOut);
 			}
         }
